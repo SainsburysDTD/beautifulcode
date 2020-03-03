@@ -1,0 +1,27 @@
+private fun List<String>.ast(): ValidatedNel<DSLError, List<DSLOperator<*>>> {
+  val dsl = this.map { token ->
+    when (token.isExpression()) {
+      false -> token.link()
+      true -> token.valid<Nel<DSLError>, String>().withEither { expression ->
+        expression.flatMap { it.tokenize().toEither() }
+          .flatMap { it.ast().toEither() }
+          .flatMap { it.assemble().toEither() }
+      }
+    }
+  }
+  
+  return dsl.filter { it is Invalid }.let { failedTokens ->
+    when (failedTokens.isEmpty()) {
+      true -> dsl.map { (it as Valid).a }.valid()
+      false -> failedTokens.asSequence().map { (it as Invalid).e }.reduce { a, b -> a + b }.invalid()
+    }
+  }
+}
+
+fun compile(program: String): Validated<Nel<DSLError>, DSLOperator<*>> = 
+  program.valid<Nel<DSLError>, String>().withEither { rawProgram ->
+               rawProgram.flatMap { it.verify().toEither() }
+                         .flatMap { it.tokenize().toEither() }
+                         .flatMap { it.ast().toEither() }
+                         .flatMap { it.assemble().toEither() }
+               }
